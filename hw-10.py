@@ -3,6 +3,9 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+
 
 # df = pd.read_csv("World Happiness Report/2019.csv")
 
@@ -10,27 +13,58 @@ import plotly.express as px
 
 data_path = "World Happiness Report"
 
+def unify_columns(df):
+    df = df.rename(columns={
+        "Happiness Score": "Score",
+        "Economy (GDP per Capita)": "GDP per capita",
+        "Family": "Social support",
+        "Health (Life Expectancy)": "Healthy life expectancy",
+        "Freedom": "Freedom to make life choices",
+        "Trust (Government Corruption)": "Perceptions of corruption",
+        "Happiness Rank": "Overall rank",
+        "Country": "Country or region"
+    })
+    return df
+
+
 frames = []
 
 for file in os.listdir(data_path):
-    if file.endswith(".csv"):
-        year = int(file.replace(".csv", ""))
+    if file.endswith(".csv") and file[:4].isdigit():
+        year = int(file[:4])
         df = pd.read_csv(os.path.join(data_path, file))
+        df = unify_columns(df)
         df["Year"] = year
         frames.append(df)
 
 df_all = pd.concat(frames, ignore_index=True)
 
-df_all.head ()
+df_all[["Score","GDP per capita","Social support",
+        "Healthy life expectancy","Freedom to make life choices",
+        "Generosity","Perceptions of corruption"]].isna().sum()
 
-# Оскільки я вже об’єднав усі CSV у df_all, то статистика для всього набору виглядатиме так:
+from sklearn.impute import SimpleImputer
 
-# 4. Інформація про типи ознак
+numeric_cols = ["Score","GDP per capita","Social support",
+                "Healthy life expectancy","Freedom to make life choices",
+                "Generosity","Perceptions of corruption"]
+
+imputer = SimpleImputer(strategy="mean")
+data_imputed = imputer.fit_transform(df_all[numeric_cols])
+df_imputed = pd.DataFrame(data_imputed, columns=numeric_cols)
+
+
+# Оскільки я вже об’єднав усі CSV у df_all, то статистика для всього набору виглядає так:
+
+df_all.head()
+
+# Інформація про типи ознак
 
 #Цей метод показує:
 #  кількість рядків і колонок
 #  типи даних
 #  кількість пропусків
+
 df_all.info()
 
 # Описова статистика
@@ -44,7 +78,7 @@ df_all.describe(include="all")
 
 # 5. Побудова діаграм розподілу
 
-# Визначення числових колонок
+# Визначення числових ознак
 numeric_cols = df_all.select_dtypes(include=["int64", "float64"]).columns
 print("Числові ознаки:", list(numeric_cols))
 
@@ -58,6 +92,7 @@ for i, col in enumerate(numeric_cols, 1):
 
 plt.tight_layout()
 plt.show()
+
 
 #6. Побудова діаграми розподілу числових ознак
 
@@ -104,8 +139,8 @@ plt.xlabel("Year")
 plt.ylabel("Country")
 plt.show()
 """
-# 8.1. Географічна теплова мапа для всіх років
 
+# 8.1. Географічна теплова мапа для всіх років
 years = sorted(df_all["Year"].unique())
 
 for y in years:
@@ -119,6 +154,7 @@ for y in years:
         title=f"Happiness Score ({y})"
     )
     fig.show()
+
 
 # 8.2. Усі години на одному графіку, з анімацією
 fig_ani = px.choropleth(
@@ -177,8 +213,114 @@ def data_scale(data, scaler_type='minmax'):
     return res
 
 # 9.3.
-data_scaled = data_scale(original_dataframe, scaler_type='std')
+data_scaled = data_scale(df_imputed, scaler_type='std')
+df_scaled = pd.DataFrame(data_scaled, columns=numeric_cols)
 
-df_scaled = pd.DataFrame(data_scaled, columns=original_dataframe.columns)
 df_scaled.head()
+
+
+# 10.1. Оригінальні дані
+print("=== ОРИГІНАЛЬНІ СТАТИСТИКИ ===")
+print(original_dataframe.describe())
+
+# 10.2. Стандартизовані дані
+print("\n=== СТАНДАРТИЗОВАНІ СТАТИСТИКИ ===")
+print(df_scaled.describe())
+
+# 10.3. Table format
+orig_stats = original_dataframe.describe().T
+scaled_stats = df_scaled.describe().T
+
+comparison = pd.concat([orig_stats, scaled_stats], axis=1, keys=["Original", "Scaled"])
+comparison
+
+
+# 11.1. Побудова моделі GMM
+
+# Кількість кластерів (можна змінювати)
+n_clusters = 3
+
+# Створення моделі
+gmm = GaussianMixture(
+    n_components=n_clusters,
+    covariance_type='full',
+    random_state=42
+)
+
+# Навчання моделі
+gmm.fit(df_scaled)
+
+# Прогнозування кластерів
+clusters = gmm.predict(df_scaled)
+
+# Додавання кластерів у DataFrame
+df_clusters = original_dataframe.copy()
+df_clusters["Cluster"] = clusters
+
+df_clusters.head()
+
+
+# 12
+
+# Переконаємося, що Country or region є в df_clusters
+df_clusters["Country or region"] = df_all["Country or region"].values
+
+# Створення матриці: країна → кластер
+pivot = df_clusters.pivot_table(
+    index="Country or region",
+    values="Cluster",
+    aggfunc="first"   # бо кожна країна має один кластер
+)
+
+plt.figure(figsize=(10, 20))
+sns.heatmap(
+    pivot,
+    cmap="viridis",
+    linewidths=0.5,
+    linecolor="gray",
+    annot=True,
+    fmt="d"
+)
+
+plt.title("Розподіл країн за кластерами (GMM)")
+plt.xlabel("Cluster")
+plt.ylabel("Country")
+plt.show()
+
+
+# 13.1. Приклад коду для порівняння різних наборів ознак
+
+feature_sets = {
+    "economic": ["GDP per capita"],
+    "social": ["Social support"],
+    "health": ["Healthy life expectancy"],
+    "institutional": ["Freedom to make life choices", "Perceptions of corruption"],
+    "behavioral": ["Generosity"],
+    "core_3": ["GDP per capita", "Social support", "Healthy life expectancy"],
+    "full": ["GDP per capita", "Social support", "Healthy life expectancy",
+             "Freedom to make life choices", "Generosity", "Perceptions of corruption"]
+}
+
+results = {}
+
+for name, features in feature_sets.items():
+    data = df_all[features].copy()
+    data = data.fillna(data.mean())
+    scaled = StandardScaler().fit_transform(data)
+
+    gmm = GaussianMixture(n_components=3, random_state=42)
+    clusters = gmm.fit_predict(scaled)
+
+    results[name] = clusters
+
+
+# 13.2. Порівняння складу кластерів
+
+# Створюється таблиця, де видно, які країни змінюють кластер при зміні ознак
+comparison = pd.DataFrame({
+    name: results[name]
+    for name in results
+})
+comparison["Country"] = df_all["Country or region"].values
+comparison
 
