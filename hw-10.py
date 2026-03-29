@@ -81,3 +81,25 @@ sns.heatmap(df_num.corr(), annot=True, cmap="coolwarm", fmt=".2f")
 plt.title("Кореляційна матриця числових ознак (усі роки)")
 plt.show()
 
+
+# 7. Теплова мапа для всіх років
+
+# df_all має містити колонки: Country, Year, Score
+pivot = df_all.pivot_table(
+    index="Country or region",
+    columns="Year",
+    values="Score"
+)
+
+plt.figure(figsize=(14, 22))
+sns.heatmap(
+    pivot,
+    cmap="viridis",
+    linewidths=0.5,
+    linecolor="gray"
+)
+
+plt.title("Розподіл Happiness Score за країнами та роками")
+plt.xlabel("Year")
+plt.ylabel("Country")
+plt.show()
