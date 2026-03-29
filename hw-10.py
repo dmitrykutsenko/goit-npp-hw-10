@@ -59,3 +59,25 @@ for i, col in enumerate(numeric_cols, 1):
 plt.tight_layout()
 plt.show()
 
+#6. Побудова діаграми розподілу числових ознак
+
+# Формування підмножини числових ознак
+numeric_features = [
+    "Score",
+    "GDP per capita",
+    "Social support",
+    "Healthy life expectancy",
+    "Freedom to make life choices",
+    "Generosity",
+    "Perceptions of corruption"
+]
+
+df_num = df_all[numeric_features]
+df_num.head()
+
+# Кореляційна матриця
+plt.figure(figsize=(10, 7))
+sns.heatmap(df_num.corr(), annot=True, cmap="coolwarm", fmt=".2f")
+plt.title("Кореляційна матриця числових ознак (усі роки)")
+plt.show()
+
